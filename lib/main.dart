@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
-
-import 'package:flutter/rendering.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:ui';
-
-import 'package:flutter/services.dart';
 import 'package:render/render.dart';
 
 void main() {
@@ -26,7 +21,6 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-//
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
@@ -36,44 +30,44 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final GlobalKey _renderKey = GlobalKey();
+  final RenderController renderController = RenderController();
 
-  Future<void> requestMediaLibraryPermission() async {
-    PermissionStatus status = await Permission.mediaLibrary.status;
+  Future<void> saveRenderedImage() async {
+    // Запрашиваем разрешение на доступ к хранилищу
+    // var status = await Permission.storage.request();
+    // if (!status.isGranted) {
+    //   showOpenSettingsDialog();
+    //   return;
+    // }
 
-    if (status.isDenied) {
-      // Пользователь еще не давал разрешение или ранее отказал
-      // Запрашиваем разрешение
-      PermissionStatus result = await Permission.mediaLibrary.request();
-
-      if (result.isGranted) {
-        // Разрешение предоставлено, продолжаем работу с медиатекой
-      } else if (result.isPermanentlyDenied || result.isDenied) {
-        // Разрешение отклонено навсегда или повторно
-        // Отображаем кнопку для перехода в настройки
-        showOpenSettingsDialog();
-      } else {
-        // Разрешение отклонено, обработайте соответствующим образом
+    // Захватываем изображение из Render и сохраняем его
+    try {
+      final result = await renderController.captureImage(
+        format: ImageFormat.png,
+        settings: const ImageSettings(pixelRatio: 3.0),
+      );
+      if (result.output.existsSync()) {
+        final bytes = await result.output.readAsBytes();
+        await ImageGallerySaver.saveImage(
+          bytes,
+          quality: 100,
+          name: "rendered_image_${DateTime.now().millisecondsSinceEpoch}",
+        );
+        //debugPrint('Результат сохранения: $saveResult');
       }
-    } else if (status.isGranted) {
-      // Разрешение уже предоставлено, продолжаем работу с медиатекой
-    } else if (status.isPermanentlyDenied) {
-      // Разрешение отклонено навсегда
-      // Отображаем кнопку для перехода в настройки
-      showOpenSettingsDialog();
-    } else if (status.isRestricted) {
-      // Разрешение ограничено, обработайте соответствующим образом
+    } catch (e) {
+      //debugPrint('Ошибка при сохранении изображения: $e');
     }
   }
 
   void showOpenSettingsDialog() {
-    // Здесь вы можете отобразить диалоговое окно или экран с кнопкой перехода в настройки
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Требуется доступ к медиатеке'),
         content: const Text(
-            'Пожалуйста, предоставьте доступ к медиатеке в настройках приложения.'),
+          'Пожалуйста, предоставьте доступ к медиатеке в настройках приложения.',
+        ),
         actions: [
           TextButton(
             onPressed: () {
@@ -87,42 +81,6 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  Future<void> _saveImage() async {
-    await requestMediaLibraryPermission();
-
-    try {
-      // Получаем RenderRepaintBoundary с обработкой null
-      RenderRepaintBoundary? boundary = _renderKey.currentContext
-          ?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) {
-        debugPrint('Не удалось получить RenderRepaintBoundary');
-        return;
-      }
-
-      // Захватываем изображение
-      var image = await boundary.toImage(pixelRatio: 3.0);
-
-      // Получаем ByteData с обработкой null
-      ByteData? byteData = await image.toByteData(format: ImageByteFormat.png);
-      if (byteData == null) {
-        debugPrint('Не удалось получить данные изображения');
-        return;
-      }
-
-      Uint8List pngBytes = byteData.buffer.asUint8List();
-
-      // Сохраняем изображение в фотоальбом
-      final result = await ImageGallerySaver.saveImage(
-        pngBytes,
-        quality: 100,
-        name: "image_${DateTime.now().millisecondsSinceEpoch}",
-      );
-      debugPrint('Результат сохранения: $result');
-    } catch (e) {
-      debugPrint('Ошибка при сохранении изображения: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -133,10 +91,10 @@ class _MyHomePageState extends State<MyHomePage> {
             children: [
               Expanded(
                 child: Render(
-                  key: _renderKey,
+                  controller: renderController,
                   child: Container(
                     padding: const EdgeInsets.all(30),
-                    color: const Color(0xFFf5f5f5),
+                    color: Colors.blue,
                     child: const Center(
                       child: Text(
                         'A Flutter plugin for finding commonly used locations on the filesystem. Supports Android, iOS, Linux, macOS and Windows. Not all methods are supported on all platforms.',
@@ -147,9 +105,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
               GestureDetector(
-                onTap: () {
-                  _saveImage();
-                },
+                onTap: saveRenderedImage,
                 child: Container(
                   height: 50,
                   color: Colors.black,
